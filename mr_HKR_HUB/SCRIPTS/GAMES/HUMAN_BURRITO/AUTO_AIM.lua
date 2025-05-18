@@ -2,12 +2,15 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 
-
-local avoidRadius = 15      -- Distance to keep from other players
-local detectionRadius = 20   -- Radius to highlight and find targets
-local offsetBehind = 3       -- Distance behind the target to teleport during attack
-
+local passiveDodgeEnabled = true
 local targeting = false
+local dragEnabled = false
+
+local avoidRadius = 20
+local detectionRadius = 20
+local offsetBehind = 3
+
+-- Setup Highlight
 local highlight = Instance.new("Highlight")
 highlight.FillColor = Color3.fromRGB(255, 0, 0)
 highlight.OutlineColor = Color3.fromRGB(255, 255, 0)
@@ -15,36 +18,78 @@ highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 highlight.Enabled = false
 highlight.Parent = workspace
 
+-- UI Setup
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "CombatGui"
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+-- Create Button Generator
+local function createButton(name, position, text)
+	local btn = Instance.new("TextButton")
+	btn.Name = name
+	btn.Size = UDim2.new(0, 120, 0, 40)
+	btn.Position = position
+	btn.Text = text
+	btn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+	btn.TextColor3 = Color3.new(1, 1, 1)
+	btn.TextScaled = true
+	btn.Font = Enum.Font.SourceSansBold
+	btn.Parent = screenGui
+	btn.Active = true
+	btn.Draggable = false
+	return btn
+end
+
+-- Buttons
+local attackBtn = createButton("AttackBtn", UDim2.new(1, -140, 1, -140), "Auto")
+local dodgeBtn = createButton("DodgeBtn", UDim2.new(1, -140, 1, -190), "Dodge")
+local lockBtn = createButton("LockBtn", UDim2.new(1, -140, 1, -240), "Unlock")
+lockBtn.Draggable = false
+
+-- Label
+local creditLabel = Instance.new("TextLabel")
+creditLabel.Size = UDim2.new(0, 200, 0, 30)
+creditLabel.Position = UDim2.new(0.5, -100, 1, -30)
+creditLabel.AnchorPoint = Vector2.new(0.5, 1)
+creditLabel.Text = "By: MR_HKM V1"
+creditLabel.BackgroundTransparency = 1
+creditLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+creditLabel.TextScaled = true
+creditLabel.Font = Enum.Font.SourceSansBold
+creditLabel.Parent = screenGui
+
+-- Drag Toggle
+lockBtn.MouseButton1Click:Connect(function()
+	dragEnabled = not dragEnabled
+	lockBtn.Text = dragEnabled and "Lock" or "Unlock"
+	for _, btn in pairs(screenGui:GetChildren()) do
+		if btn:IsA("TextButton") then
+			btn.Draggable = dragEnabled
+		end
+	end
+end)
+
+-- Toggle Dodge
+dodgeBtn.MouseButton1Click:Connect(function()
+	passiveDodgeEnabled = not passiveDodgeEnabled
+	dodgeBtn.Text = passiveDodgeEnabled and "Dodge" or "NoDodge"
+end)
+
+-- Get tool
 local function getTool()
 	local character = player.Character or player.CharacterAdded:Wait()
 	return character:FindFirstChild("Default") or character:WaitForChild("Default", 5)
 end
 
--- Create ScreenGui and Button (mobile-friendly)
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "AttackGui"
-screenGui.ResetOnSpawn = false
-screenGui.IgnoreGuiInset = true
-screenGui.Parent = player:WaitForChild("PlayerGui")
-
-local button = Instance.new("TextButton")
-button.Size = UDim2.new(0, 180, 0, 60)
-button.Position = UDim2.new(1, -200, 1, -100)
-button.AnchorPoint = Vector2.new(0, 0)
-button.Text = "Auto Attack"
-button.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-button.TextColor3 = Color3.new(1, 1, 1)
-button.TextScaled = true
-button.Font = Enum.Font.SourceSansBold
-button.Parent = screenGui
-
--- Find closest player within detectionRadius
+-- Find closest enemy
 local function findClosestPlayer()
 	local myChar = player.Character
 	local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
 	if not myHRP then return nil end
 
-	local closest = nil
+	local closest
 	local closestDist = detectionRadius
 
 	for _, other in pairs(Players:GetPlayers()) do
@@ -60,11 +105,12 @@ local function findClosestPlayer()
 	return closest
 end
 
--- Passive avoidance: move away if too close to any player
+-- Passive dodge using walking
 local function avoidPlayers()
 	local myChar = player.Character
 	local hrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
-	if not hrp then return end
+	local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+	if not (hrp and hum) then return end
 
 	for _, other in pairs(Players:GetPlayers()) do
 		if other ~= player and other.Character and other.Character:FindFirstChild("HumanoidRootPart") then
@@ -72,35 +118,16 @@ local function avoidPlayers()
 			local dist = (hrp.Position - otherHRP.Position).Magnitude
 
 			if dist < avoidRadius then
-				-- Calculate direction away from the player
-				local awayVector = (hrp.Position - otherHRP.Position).Unit
-				local newPos = hrp.Position + awayVector * (avoidRadius - dist + 1)
-
-				-- Move character safely
-				hrp.CFrame = CFrame.new(newPos, newPos + hrp.CFrame.LookVector)
-				break -- avoid one player at a time to avoid jitter
+				local awayDir = (hrp.Position - otherHRP.Position).Unit
+				local targetPos = hrp.Position + awayDir * (avoidRadius - dist + 3)
+				hum:MoveTo(targetPos)
+				break
 			end
 		end
 	end
 end
 
--- Highlight closest player constantly
-RunService.RenderStepped:Connect(function()
-	local target = findClosestPlayer()
-	if target and target.Character then
-		highlight.Adornee = target.Character
-		highlight.Enabled = true
-	else
-		highlight.Enabled = false
-	end
-
-	-- Passive avoidance only if not targeting
-	if not targeting then
-		avoidPlayers()
-	end
-end)
-
--- Attack: teleport behind and activate tool repeatedly
+-- Attack follow
 local function followAndAttack(targetPlayer)
 	local char = player.Character or player.CharacterAdded:Wait()
 	local hrp = char:WaitForChild("HumanoidRootPart")
@@ -111,7 +138,6 @@ local function followAndAttack(targetPlayer)
 		local dist = (hrp.Position - targetHRP.Position).Magnitude
 		if dist > detectionRadius then break end
 
-		-- Teleport behind
 		local behindPos = targetHRP.Position - (targetHRP.CFrame.LookVector * offsetBehind)
 		hrp.CFrame = CFrame.new(behindPos, targetHRP.Position)
 
@@ -122,8 +148,8 @@ local function followAndAttack(targetPlayer)
 	targeting = false
 end
 
--- Button toggles targeting/attacking
-button.MouseButton1Click:Connect(function()
+-- Button press
+attackBtn.MouseButton1Click:Connect(function()
 	if targeting then
 		targeting = false
 	else
@@ -134,5 +160,26 @@ button.MouseButton1Click:Connect(function()
 				followAndAttack(target)
 			end)
 		end
+	end
+end)
+
+-- Reconnect on death
+player.CharacterAdded:Connect(function()
+	task.wait(1)
+	highlight.Parent = workspace
+end)
+
+-- Continuous logic
+RunService.RenderStepped:Connect(function()
+	local target = findClosestPlayer()
+	if target and target.Character then
+		highlight.Adornee = target.Character
+		highlight.Enabled = true
+	else
+		highlight.Enabled = false
+	end
+
+	if passiveDodgeEnabled and not targeting then
+		avoidPlayers()
 	end
 end)
