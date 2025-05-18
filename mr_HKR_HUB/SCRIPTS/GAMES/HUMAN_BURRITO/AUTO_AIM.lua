@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 
+
 local avoidRadius = 15      -- Distance to keep from other players
 local detectionRadius = 20   -- Radius to highlight and find targets
 local offsetBehind = 3       -- Distance behind the target to teleport during attack
