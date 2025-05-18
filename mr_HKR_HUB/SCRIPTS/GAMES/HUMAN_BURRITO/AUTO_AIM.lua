@@ -127,14 +127,25 @@ local function avoidPlayers()
 	end
 end
 
--- Attack follow
+-- Attack follow with return after kill
 local function followAndAttack(targetPlayer)
 	local char = player.Character or player.CharacterAdded:Wait()
 	local hrp = char:WaitForChild("HumanoidRootPart")
 	local tool = getTool()
 
-	while targeting and targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") do
-		local targetHRP = targetPlayer.Character.HumanoidRootPart
+	if not hrp or not targetPlayer or not targetPlayer.Character then return end
+
+	local initialCFrame = hrp.CFrame
+	local targetHumanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+
+	while targeting and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") do
+		if targetHumanoid and targetHumanoid.Health <= 0 then
+			break
+		end
+
+		local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+		if not targetHRP then break end
+
 		local dist = (hrp.Position - targetHRP.Position).Magnitude
 		if dist > detectionRadius then break end
 
@@ -143,6 +154,11 @@ local function followAndAttack(targetPlayer)
 
 		if tool then tool:Activate() end
 		task.wait(0.1)
+	end
+
+	-- Return to original position
+	if char and char:FindFirstChild("HumanoidRootPart") then
+		char.HumanoidRootPart.CFrame = initialCFrame
 	end
 
 	targeting = false
