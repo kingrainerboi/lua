@@ -7,7 +7,7 @@ local targeting = false
 local dragEnabled = false
 
 local avoidRadius = 20
-local detectionRadius = 20
+local detectionRadius = 25
 local offsetBehind = 3
 
 -- Setup Highlight
